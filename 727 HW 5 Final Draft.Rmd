@@ -150,3 +150,72 @@ acs_il_t <- getCensus(
   )
 head(acs_il_t)
 ```
+
+## k-Means
+
+As before, clean our data for clustering census tracts based on population, average household income and per capita income.
+```{r}
+clustering_data <- acs_il_t %>%
+  select(NAME, pop, hh_income, income) %>%
+  na.omit() %>%
+  mutate(across(c(pop, hh_income, income), scale))  
+head(clustering_data)
+```
+Since we want to use K Means in this section, we start by determining the optimal number of K that results in Clusters with low within but high between variation. Plot within cluster sums of squares for a range of K (e.g. up to 20).
+```{r}
+library(factoextra)
+
+fviz_nbclust(clustering_data %>% select(-NAME), kmeans, method = "wss", k.max = 20) +
+  labs(
+    title = "Elbow Method for Determining Optimal K",
+    x = "Number of Clusters (K)",
+    y = "Within-Cluster Sum of Squares (WCSS)"
+  )
+```
+Run `kmeans()` for the optimal number of clusters based on the plot above.
+```{r}
+optimal_k <- 5
+set.seed(123) 
+kmeans_result <- kmeans(clustering_data %>% select(-NAME), centers = optimal_k, nstart = 25)
+
+clustering_data <- clustering_data %>%
+  mutate(cluster = kmeans_result$cluster)
+head(clustering_data)
+```
+Find the mean population, household income and per capita income grouped by clusters. In addition, display the most frequent county that can be observed within each cluster.
+```{r}
+clustera <- clustering_data %>%
+  group_by(cluster) %>%
+  summarize(
+    mean_pop = mean(pop),
+    mean_hh_income = mean(hh_income),
+    mean_income = mean(income),
+    most_frequent_county = names(sort(table(NAME), decreasing = TRUE)[1])
+  )
+print(clustera)
+```
+As you might have seen earlier, it's not always clear which number of clusters is the optimal choice. To automate K Means clustering, program a function based on `kmeans()` that takes K as an argument. You can fix the other arguments, e.g. such that a specific dataset is always used when calling the function.
+```{r}
+kmrun <- function(data, k) {
+  kmeans_result <- kmeans(data, centers = k, nstart = 25)
+  return(kmeans_result$cluster)
+}
+```
+We want to utilize this function to iterate over multiple Ks (e.g., K = 2, ..., 10) and -- each time -- add the resulting cluster membership as a new variable to our (cleaned) original data frame (`acs_il_t`). There are multiple solutions for this task, e.g. think about the `apply` family or `for` loops.
+```{r}
+for (k in 2:10) {
+  clustering_data <- clustering_data %>%
+    mutate(!!paste0("cluster_", k) := kmrun(select(., -NAME), k))
+}
+head(clustering_data)
+```     
+Finally, display the first rows of the updated data set (with multiple cluster columns).
+```{r}
+for (k in 2:10) {
+  clustering_data <- clustering_data %>%
+    mutate(!!paste0("cluster_", k) := kmrun(select(., -NAME), k))
+}
+clustering_data %>%
+  slice(1) %>%
+  print()
+```
