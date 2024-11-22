@@ -18,3 +18,66 @@ You may work in pairs or individually for this assignment. Make sure you join a 
  library(magrittr)
  library(factoextra)
 ```
+
+## Exploring ACS Data
+
+In this notebook, we use the Census API to gather data from the American Community Survey (ACS). This requires an access key, which can be obtained here:
+
+https://api.census.gov/data/key_signup.html
+
+```{r}
+library(tidycensus)
+cs_key <- census_api_key("d6a0e08154904fdf0b7b3d0e8299c4d210d39d6f", install = TRUE, overwrite=TRUE) 
+ acs_il_c <- getCensus(name = "acs/acs5",
+                     vintage = 2016,
+                     vars = c("NAME", "B01003_001E", "B19013_001E", "B19301_001E"),
+                     region = "county:*",
+                    regionin = "state:17",
+                     key = cs_key) %>%
+             rename(pop = B01003_001E, 
+                   hh_income = B19013_001E, 
+                   income = B19301_001E)
+head(acs_il_c)
+```
+
+Pull map data for Illinois into a data frame.
+
+```{r}
+library(maps)
+ il_map <- map_data("county", region = "illinois")
+ head(il_map)
+```
+
+Join the ACS data with the map data. Not that `il_map` has a column `subregion` which includes county names. We need a corresponding variable in the ACS data to join both data sets. This needs some transformations, among which the function `tolower()` might be useful. Call the joined data `acs_map`.
+```{r}
+library(maps)
+library(dplyr)
+
+il_map <- map_data("county", region = "illinois")
+head(il_map)
+
+acs_il_c <- acs_il_c %>%
+  mutate(
+    county_name = tolower(str_remove(NAME, " County, Illinois"))
+  )
+head(acs_il_c)
+
+acs_map <- il_map %>%
+  left_join(acs_il_c, by = c("subregion" = "county_name"))
+head(acs_map)
+```
+
+After you do this, plot a map of Illinois with Counties colored by per capita income.
+
+```{r | fig.height = 6.5, fig.width = 6}
+ggplot(acs_map) + 
+  geom_polygon(aes(x = long, y = lat, group = group, fill = income), color = "black") + 
+  scale_fill_gradientn(
+    colors = c("#ffe6f0", "#ff99cc", "#ff3399", "#ff0066"), # Gradient of pink shades
+    name = "Income"
+  ) +
+  theme_minimal() +
+  labs(title = "Income Map with Custom Shades of Pink",
+           x = "Longitude", y = "Latitude"
+  )
+```
